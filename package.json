@@ -1,17 +1,41 @@
 {
   "name": "@moshcoder/moshpit-name",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "license": "MIT",
   "description": "The Moshpit namespace rules: what is a valid ending, what a name parses to, which namespace wins, and what things cost. Pure, dependency-free, runs anywhere.",
-  "keywords": ["moshpit", "namespace", "validation", "tld"],
-  "repository": { "type": "git", "url": "git+https://github.com/moshcoder/moshpit-name.git" },
+  "keywords": [
+    "moshpit",
+    "namespace",
+    "validation",
+    "tld"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moshcoder/moshpit-name.git"
+  },
   "homepage": "https://github.com/moshcoder/moshpit-name",
   "main": "lib/index.mjs",
-  "exports": { ".": "./lib/index.mjs" },
-  "bin": { "moshpit-name": "bin/moshpit-name.mjs" },
-  "files": ["bin", "lib", "README.md", "LICENSE"],
-  "scripts": { "test": "node --test test/*.test.mjs" },
-  "engines": { "node": ">=18" },
-  "publishConfig": { "access": "public" }
+  "exports": {
+    ".": "./lib/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "moshpit-name": "bin/moshpit-name.mjs"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }
