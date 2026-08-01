@@ -6,7 +6,7 @@ import test from "node:test";
 
 import {
   RESERVED_TLDS, normalizeLabel, normalizeTld, tldRejection, parseMoshpitName,
-  normalizeMode, resolutionPreference,
+  normalizeMode, resolutionPreference, parseTldList,
 } from "../lib/index.mjs";
 
 test("normalizeTld accepts what people actually type", () => {
@@ -123,5 +123,56 @@ test("all-numeric endings", async (t) => {
     assert.equal(parseMoshpitName("1.420"), null);
     assert.equal(parseMoshpitName("192.168"), null);
     assert.equal(parseMoshpitName("0.0"), null);
+  });
+});
+
+test("a pasted list reads endings and names alike", async (t) => {
+  await t.test("all four shapes of a line are understood", () => {
+    // `foo`, `bar.foo`, `.whatever`, `.foo.whatever` — an ending and a name
+    // under one, each with and without the decorative leading dot. Anything
+    // with a dot in it used to be dropped to `tlds` and refused downstream as
+    // "not a valid TLD", which described the field rather than the mistake.
+    const { tlds, names } = parseTldList("foo\nbar.foo\n.whatever\n.foo.whatever");
+    assert.deepEqual(tlds, ["foo", "whatever"]);
+    assert.deepEqual(names, [
+      { tld: "foo", label: "bar" },
+      { tld: "whatever", label: "foo" },
+    ]);
+  });
+
+  await t.test("an ending and a name under it are two entries", () => {
+    // Deduplication keys on the whole thing. `.eggs` and `blue.eggs` share a
+    // TLD and nothing else; collapsing them would drop whichever came second.
+    const { tlds, names } = parseTldList(".eggs\nblue.eggs\neggs\nblue.eggs");
+    assert.deepEqual(tlds, ["eggs"]);
+    assert.deepEqual(names, [{ tld: "eggs", label: "blue" }]);
+  });
+
+  await t.test("every entry says which of the two it is", () => {
+    assert.deepEqual(parseTldList("eggs\nblue.eggs").entries, [
+      { tld: "eggs", label: null, aliasOf: null, priceUsd: null },
+      { tld: "eggs", label: "blue", aliasOf: null, priceUsd: null },
+    ]);
+  });
+
+  await t.test("a name carries per-line settings the way an ending does", () => {
+    assert.deepEqual(parseTldList("blue.eggs $5 mosh").entries,
+      [{ tld: "eggs", label: "blue", aliasOf: "mosh", priceUsd: 5 }]);
+  });
+
+  await t.test("neither an ending nor a name survives to be refused by name", () => {
+    // Three labels is neither. Dropping it here would leave it out of the
+    // caller's report entirely, so it is handed on carrying its own bad text.
+    const { entries, tlds, names } = parseTldList("a.b.c");
+    assert.deepEqual(names, []);
+    assert.deepEqual(tlds, ["a.b.c"]);
+    assert.equal(entries[0].label, null);
+  });
+
+  await t.test("both halves numeric is an ending, not a name", () => {
+    // parseMoshpitName refuses `1.420` as an address, and the token falls
+    // through to the same place anything unparseable does.
+    assert.deepEqual(parseTldList("1.420").names, []);
+    assert.deepEqual(parseTldList("1.420").tlds, ["1.420"]);
   });
 });

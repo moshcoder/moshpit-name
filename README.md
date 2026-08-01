@@ -16,6 +16,12 @@ import { parseMoshpitName, tldRejection, parseTldList } from "@moshcoder/moshpit
 parseMoshpitName("blue.420");   // { label: "blue", tld: "420" }
 parseMoshpitName("1.420");      // null — both halves numeric reads as an IPv4 literal
 tldRejection("bank");           // "that name is reserved"
+
+// A pasted list holds both halves of the namespace, in whichever shape the
+// person typed. The leading dot is decoration; two labels is a name.
+parseTldList("eggs\n.whatever\nblue.eggs\n.me.whatever");
+// tlds:  ["eggs", "whatever"]
+// names: [{ tld: "eggs", label: "blue" }, { tld: "whatever", label: "me" }]
 ```
 
 ## Why it is a package
