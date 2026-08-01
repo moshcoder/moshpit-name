@@ -160,6 +160,11 @@ test("a pasted list reads endings and names alike", async (t) => {
       [{ tld: "eggs", label: "blue", aliasOf: "mosh", priceUsd: 5 }]);
   });
 
+  await t.test("a separated USD prefix belongs to the price", () => {
+    assert.deepEqual(parseTldList("eggs USD 2").entries,
+      [{ tld: "eggs", label: null, aliasOf: null, priceUsd: 2 }]);
+  });
+
   await t.test("neither an ending nor a name survives to be refused by name", () => {
     // Three labels is neither. Dropping it here would leave it out of the
     // caller's report entirely, so it is handed on carrying its own bad text.
