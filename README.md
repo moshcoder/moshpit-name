@@ -37,6 +37,7 @@ catch drift between two copies is a good sign the copies should be one thing.
 moshpit-name check <ending> [--json]  can this ending be claimed, and if not why
 moshpit-name parse <name> [--json]    split a name into its label and ending
 moshpit-name list [-] [--json]        parse a pasted list; - reads stdin
+moshpit-name reserved [--json]        list endings that cannot be claimed
 moshpit-name prices [--json]          what an ending and a name cost
 ```
 
@@ -51,6 +52,12 @@ $ printf '.toplevel .redirect $2.00USD\neggs, yeah\n' | moshpit-name list -
 .toplevel  → .redirect  $2
 .eggs
 .yeah
+
+$ moshpit-name reserved
+.amazon
+.amex
+.anthropic
+...
 ```
 
 Every data command accepts `--json`, including failures, so scripts can consume

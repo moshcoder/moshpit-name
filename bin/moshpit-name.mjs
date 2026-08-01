@@ -15,6 +15,7 @@ const USAGE = `moshpit-name — the Moshpit namespace rules
   moshpit-name check <ending> [--json]  can this ending be claimed, and if not why
   moshpit-name parse <name> [--json]    split a name into its label and ending
   moshpit-name list [-] [--json]        parse a pasted list; - reads stdin
+  moshpit-name reserved [--json]        list endings that cannot be claimed
   moshpit-name prices [--json]          what an ending and a name cost
 
 Pure rules, no network. The same answers the registry gives, without asking it.`;
@@ -96,6 +97,13 @@ if (sub === "list") {
   const counted = [`${endings} ending${endings === 1 ? "" : "s"}`];
   if (names) counted.push(`${names} name${names === 1 ? "" : "s"}`);
   out(`\n${counted.join(", ")}${skipped ? `, ${skipped} past the ${MAX_BULK_TLDS} limit` : ""}`);
+  process.exit(0);
+}
+
+if (sub === "reserved") {
+  const tlds = [...RESERVED_TLDS].sort();
+  if (json) outJson({ count: tlds.length, tlds });
+  else out(tlds.map((tld) => `.${tld}`).join("\n"));
   process.exit(0);
 }
 
