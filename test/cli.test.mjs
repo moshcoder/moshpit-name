@@ -89,6 +89,19 @@ test("list --json emits the complete parse result from stdin", () => {
   });
 });
 
+test("reserved lists the complete set in stable order", () => {
+  const expected = [...RESERVED_TLDS].sort();
+  const human = run(["reserved"]);
+
+  assert.equal(human.status, 0);
+  assert.equal(human.stderr, "");
+  assert.equal(human.stdout, `${expected.map((tld) => `.${tld}`).join("\n")}\n`);
+
+  const json = run(["reserved", "--json"]);
+  assert.equal(json.status, 0);
+  assert.deepEqual(output(json), { count: expected.length, tlds: expected });
+});
+
 test("prices --json exposes machine-readable annual prices", () => {
   const result = run(["prices", "--json"]);
   assert.equal(result.status, 0);
