@@ -13,7 +13,7 @@ test("normalizeTld accepts what people actually type", () => {
   assert.equal(normalizeTld("eggs"), "eggs");
   assert.equal(normalizeTld(".eggs"), "eggs");
   assert.equal(normalizeTld("  .EGGS  "), "eggs");
-  assert.equal(normalizeTld("web3-agents"), "web3-agents");
+  assert.equal(normalizeTld("web3agents"), "web3agents");
 });
 
 test("normalizeTld rejects what could never be a TLD", () => {
@@ -180,4 +180,22 @@ test("a pasted list reads endings and names alike", async (t) => {
     assert.deepEqual(parseTldList("1.420").names, []);
     assert.deepEqual(parseTldList("1.420").tlds, ["1.420"]);
   });
+});
+
+test("dashes are not part of a Moshpit name", () => {
+  // A dash mints near-misses of an ending someone else holds — `.cryp-to`
+  // beside `.crypto` — and a namespace one level deep with no dispute process
+  // has nowhere to put the argument.
+  assert.equal(normalizeTld("lazy-loaded"), null);
+  assert.equal(normalizeTld("cryp-to"), null);
+  assert.equal(normalizeLabel("register-me"), null);
+  assert.equal(parseMoshpitName("register-me.eggs"), null);
+  assert.equal(parseMoshpitName("blue.lazy-loaded"), null);
+
+  // Unchanged either side of the dot.
+  assert.equal(normalizeTld("oranges"), "oranges");
+  assert.equal(normalizeTld("420"), "420");
+  assert.deepEqual(parseMoshpitName("california.oranges"), { label: "california", tld: "oranges" });
+  assert.equal(normalizeLabel("a".repeat(63)), "a".repeat(63));
+  assert.equal(normalizeLabel("a".repeat(64)), null);
 });
