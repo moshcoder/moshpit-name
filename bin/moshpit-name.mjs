@@ -61,14 +61,26 @@ if (sub === "list") {
   const input = rest[0] === "-" || !rest.length ? await readStdin() : rest.join("\n");
   const { entries, skipped } = parseTldList(input);
   for (const e of entries) {
-    const bits = [`.${e.tld}`];
+    // A name is printed as written. Prefixing it with a dot would spell it as
+    // an ending, which is the one thing it is not.
+    const bits = [e.label ? `${e.label}.${e.tld}` : `.${e.tld}`];
     if (e.aliasOf) bits.push(`→ .${e.aliasOf}`);
     if (e.priceUsd !== null) bits.push(`$${e.priceUsd}`);
-    const why = tldRejection(e.tld);
+    // A token that is neither an ending nor a name arrives here carrying its
+    // own bad text, and tldRejection only speaks about things that are already
+    // shaped like an ending — so the malformed case is named here rather than
+    // printed clean as though the registry would take it.
+    const why = normalizeTld(e.tld)
+      ? tldRejection(e.tld)
+      : "not a valid ending — letters, digits and dashes only, no dots";
     if (why) bits.push(`[${why}]`);
     out(bits.join("  "));
   }
-  out(`\n${entries.length} endings${skipped ? `, ${skipped} past the ${MAX_BULK_TLDS} limit` : ""}`);
+  const endings = entries.filter((e) => !e.label).length;
+  const names = entries.length - endings;
+  const counted = [`${endings} ending${endings === 1 ? "" : "s"}`];
+  if (names) counted.push(`${names} name${names === 1 ? "" : "s"}`);
+  out(`\n${counted.join(", ")}${skipped ? `, ${skipped} past the ${MAX_BULK_TLDS} limit` : ""}`);
   process.exit(0);
 }
 
