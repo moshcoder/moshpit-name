@@ -34,10 +34,10 @@ catch drift between two copies is a good sign the copies should be one thing.
 ## CLI
 
 ```sh
-moshpit-name check <ending>     can this ending be claimed, and if not why
-moshpit-name parse <name>       split a name into its label and ending
-moshpit-name list [-]           parse a pasted list; - reads stdin
-moshpit-name prices             what an ending and a name cost
+moshpit-name check <ending> [--json]  can this ending be claimed, and if not why
+moshpit-name parse <name> [--json]    split a name into its label and ending
+moshpit-name list [-] [--json]        parse a pasted list; - reads stdin
+moshpit-name prices [--json]          what an ending and a name cost
 ```
 
 ```
@@ -51,6 +51,19 @@ $ printf '.toplevel .redirect $2.00USD\neggs, yeah\n' | moshpit-name list -
 .toplevel  → .redirect  $2
 .eggs
 .yeah
+```
+
+Every data command accepts `--json`, including failures, so scripts can consume
+the same rules without scraping the human-readable output:
+
+```sh
+$ moshpit-name check .420 --json
+{
+  "input": ".420",
+  "tld": "420",
+  "claimable": true,
+  "reason": null
+}
 ```
 
 ## What it decides

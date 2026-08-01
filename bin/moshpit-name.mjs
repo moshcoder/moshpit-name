@@ -12,15 +12,18 @@ import {
 
 const USAGE = `moshpit-name — the Moshpit namespace rules
 
-  moshpit-name check <ending>     can this ending be claimed, and if not why
-  moshpit-name parse <name>       split a name into its label and ending
-  moshpit-name list [-]           parse a pasted list; - reads stdin
-  moshpit-name prices             what an ending and a name cost
+  moshpit-name check <ending> [--json]  can this ending be claimed, and if not why
+  moshpit-name parse <name> [--json]    split a name into its label and ending
+  moshpit-name list [-] [--json]        parse a pasted list; - reads stdin
+  moshpit-name prices [--json]          what an ending and a name cost
 
 Pure rules, no network. The same answers the registry gives, without asking it.`;
 
-const [sub, ...rest] = process.argv.slice(2);
+const [sub, ...rawRest] = process.argv.slice(2);
+const json = rawRest.includes("--json");
+const rest = rawRest.filter((arg) => arg !== "--json");
 const out = console.log;
+const outJson = (value) => out(JSON.stringify(value, null, 2));
 
 const readStdin = async () => {
   let data = "";
@@ -37,29 +40,41 @@ if (sub === "check") {
   const raw = rest[0];
   const tld = normalizeTld(raw);
   if (!tld) {
-    out(`.${raw ?? ""} — not a valid ending (letters, digits and dashes only, no dots)`);
+    const reason = "not a valid ending (letters, digits and dashes only, no dots)";
+    if (json) outJson({ input: raw ?? null, tld: null, claimable: false, reason });
+    else out(`.${raw ?? ""} — ${reason}`);
     process.exit(1);
   }
   const why = tldRejection(tld);
-  out(why ? `.${tld} — ${why}` : `.${tld} — claimable`);
+  if (json) outJson({ input: raw, tld, claimable: !why, reason: why });
+  else out(why ? `.${tld} — ${why}` : `.${tld} — claimable`);
   process.exit(why ? 1 : 0);
 }
 
 if (sub === "parse") {
-  const parsed = parseMoshpitName(rest[0]);
+  const input = rest[0];
+  const parsed = parseMoshpitName(input);
   if (!parsed) {
     // The two ways this fails are worth telling apart: too many labels, and a
     // pair of numbers that reads as an IPv4 literal.
-    out(`${rest[0] ?? ""} — not a Moshpit name (one label and one ending; both numeric reads as an address)`);
+    const reason = "not a Moshpit name (one label and one ending; both numeric reads as an address)";
+    if (json) outJson({ input: input ?? null, valid: false, label: null, tld: null, reason });
+    else out(`${input ?? ""} — ${reason}`);
     process.exit(1);
   }
-  out(`${parsed.label}.${parsed.tld}   label=${parsed.label}  ending=${parsed.tld}`);
+  if (json) outJson({ input, valid: true, ...parsed, reason: null });
+  else out(`${parsed.label}.${parsed.tld}   label=${parsed.label}  ending=${parsed.tld}`);
   process.exit(0);
 }
 
 if (sub === "list") {
   const input = rest[0] === "-" || !rest.length ? await readStdin() : rest.join("\n");
-  const { entries, skipped } = parseTldList(input);
+  const parsed = parseTldList(input);
+  if (json) {
+    outJson(parsed);
+    process.exit(0);
+  }
+  const { entries, skipped } = parsed;
   for (const e of entries) {
     // A name is printed as written. Prefixing it with a dot would spell it as
     // an ending, which is the one thing it is not.
@@ -85,9 +100,17 @@ if (sub === "list") {
 }
 
 if (sub === "prices") {
-  out(`ending   .whatever      $${ENDING_PRICE_USD}/year`);
-  out(`name     me.whatever    $${CHILD_PRICE_USD}/year, set by the ending's operator`);
-  out(`\n${RESERVED_TLDS.size} endings are reserved and cannot be claimed.`);
+  if (json) {
+    outJson({
+      endingUsdPerYear: ENDING_PRICE_USD,
+      nameUsdPerYear: CHILD_PRICE_USD,
+      reservedCount: RESERVED_TLDS.size,
+    });
+  } else {
+    out(`ending   .whatever      $${ENDING_PRICE_USD}/year`);
+    out(`name     me.whatever    $${CHILD_PRICE_USD}/year, set by the ending's operator`);
+    out(`\n${RESERVED_TLDS.size} endings are reserved and cannot be claimed.`);
+  }
   process.exit(0);
 }
 
