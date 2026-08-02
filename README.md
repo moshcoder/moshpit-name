@@ -36,7 +36,8 @@ catch drift between two copies is a good sign the copies should be one thing.
 ```sh
 moshpit-name check <ending> [--json]  can this ending be claimed, and if not why
 moshpit-name parse <name> [--json]    split a name into its label and ending
-moshpit-name list [-] [--json]        parse a pasted list; - reads stdin
+moshpit-name list [-] [--limit N] [--json]
+                                       parse up to N pasted entries; - reads stdin
 moshpit-name reserved [--json]        list endings that cannot be claimed
 moshpit-name prices [--json]          what an ending and a name cost
 ```
@@ -52,6 +53,17 @@ $ printf '.toplevel .redirect $2.00USD\neggs, yeah\n' | moshpit-name list -
 .toplevel  → .redirect  $2
 .eggs
 .yeah
+
+$ printf 'eggs\nyeah\noranges\n' | moshpit-name list - --limit 2 --json
+{
+  "entries": [
+    { "tld": "eggs", "label": null, "aliasOf": null, "priceUsd": null },
+    { "tld": "yeah", "label": null, "aliasOf": null, "priceUsd": null }
+  ],
+  "tlds": ["eggs", "yeah"],
+  "names": [],
+  "skipped": 1
+}
 
 $ moshpit-name reserved
 .amazon
@@ -72,6 +84,11 @@ $ moshpit-name check .420 --json
   "reason": null
 }
 ```
+
+`list --limit N` stops after `N` unique entries and reports the remainder in
+`skipped`. `N` must be an integer from 1 through 1000, the package's bulk
+ceiling. The option works with inline arguments or stdin and can appear before
+or after `-`.
 
 ## What it decides
 
