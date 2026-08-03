@@ -1,7 +1,7 @@
 # Managed by sh1pt Actions Fleet
-# pack: threatcrush-scan@1.0.1
+# pack: threatcrush-scan@1.0.2
 # install: sh1pt-actions-store
-# hash: sha256:94dfa939de4b1e9ed457732a95c6194281eace71ab563e1190f6ccf6af7a98d5
+# hash: sha256:d23303c360b8944d998f4e608923cf13a73cdfd5e7974c30b070a0fbe08e37c8
 name: threatcrush security scan
 
 on:
@@ -152,7 +152,14 @@ jobs:
 
           lines = ["## ThreatCrush Security Scan", ""]
 
-          if status == "error" or results is None:
+          # Fail closed: render findings only on positive evidence that a scan
+          # completed. Testing for `status == "error"` was fail-open and got
+          # caught immediately — when the capability check failed, the scan
+          # step was *skipped*, so `status` was the empty string rather than
+          # "error", and the comment cheerfully reported "0 findings" for a
+          # scan that never started. Any state that is not a known-good
+          # outcome is NOT RUN.
+          if status not in ("clean", "findings") or results is None:
               # Never render "no issues found" for a scan that did not finish.
               # An unexamined diff is not a clean one, and the two are
               # indistinguishable to whoever reads the comment.
