@@ -34,7 +34,8 @@ catch drift between two copies is a good sign the copies should be one thing.
 ## CLI
 
 ```sh
-moshpit-name check <ending> [--json]  can this ending be claimed, and if not why
+moshpit-name check <ending...> [--json]
+                                      can these endings be claimed, and if not why
 moshpit-name parse <name> [--json]    split a name into its label and ending
 moshpit-name list [-] [--limit N] [--json]
                                        parse up to N pasted entries; - reads stdin
@@ -45,6 +46,27 @@ moshpit-name prices [--json]          what an ending and a name cost
 ```
 $ moshpit-name check .420
 .420 — claimable
+
+$ moshpit-name check .eggs .bank --json
+{
+  "count": 2,
+  "claimableCount": 1,
+  "rejectedCount": 1,
+  "results": [
+    {
+      "input": ".eggs",
+      "tld": "eggs",
+      "claimable": true,
+      "reason": null
+    },
+    {
+      "input": ".bank",
+      "tld": "bank",
+      "claimable": false,
+      "reason": "that name is reserved"
+    }
+  ]
+}
 
 $ moshpit-name parse 1.420
 1.420 — not a Moshpit name (one label and one ending; both numeric reads as an address)
@@ -84,6 +106,10 @@ $ moshpit-name check .420 --json
   "reason": null
 }
 ```
+
+For compatibility, `check <ending> --json` returns the established bare result
+object shown above. Passing two or more endings returns the batch wrapper with
+counts and a `results` array.
 
 `list --limit N` stops after `N` unique entries and reports the remainder in
 `skipped`. `N` must be an integer from 1 through 1000, the package's bulk
