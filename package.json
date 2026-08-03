@@ -1,6 +1,6 @@
 {
   "name": "@moshcoder/moshpit-name",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "license": "MIT",
   "description": "The Moshpit namespace rules: what is a valid ending, what a name parses to, which namespace wins, and what things cost. Pure, dependency-free, runs anywhere.",
