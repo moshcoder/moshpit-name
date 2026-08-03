@@ -54,6 +54,58 @@ test("check --json describes claimable, reserved, and malformed endings", () => 
   });
 });
 
+test("check validates multiple endings in one invocation", () => {
+  const result = run(["check", ".420", ".bank", "two.labels", "--json"]);
+
+  assert.equal(result.status, 1);
+  assert.deepEqual(output(result), {
+    count: 3,
+    claimableCount: 1,
+    rejectedCount: 2,
+    results: [
+      { input: ".420", tld: "420", claimable: true, reason: null },
+      { input: ".bank", tld: "bank", claimable: false, reason: "that name is reserved" },
+      {
+        input: "two.labels",
+        tld: null,
+        claimable: false,
+        reason: "not a valid ending (letters, digits and dashes only, no dots)",
+      },
+    ],
+  });
+
+  const human = run(["check", "eggs", ".bank", "two.labels"]);
+  assert.equal(human.status, 1);
+  assert.equal(human.stderr, "");
+  assert.equal(human.stdout,
+    ".eggs — claimable\n"
+    + ".bank — that name is reserved\n"
+    + ".two.labels — not a valid ending (letters, digits and dashes only, no dots)\n");
+
+  const empty = run(["check"]);
+  assert.equal(empty.status, 1);
+  assert.equal(empty.stderr, "");
+  assert.equal(empty.stdout,
+    ". — not a valid ending (letters, digits and dashes only, no dots)\n");
+});
+
+test("check rejects unknown options and supports an end-of-options separator", () => {
+  const limit = run(["check", ".eggs", "--limit", ".bank"]);
+  assert.equal(limit.status, 1);
+  assert.equal(limit.stdout, "");
+  assert.equal(limit.stderr, 'moshpit-name: unknown option "--limit"\n');
+
+  const typo = run(["check", ".eggs", "--jsn", "--json"]);
+  assert.equal(typo.status, 1);
+  assert.deepEqual(output(typo), { error: 'unknown option "--jsn"' });
+
+  const literal = run(["check", "--", "--jsn"]);
+  assert.equal(literal.status, 1);
+  assert.equal(literal.stderr, "");
+  assert.equal(literal.stdout,
+    ".--jsn — not a valid ending (letters, digits and dashes only, no dots)\n");
+});
+
 test("parse --json returns normalized fields and structured invalid output", () => {
   const valid = run(["parse", " Blue.EGGS ", "--json"]);
   assert.equal(valid.status, 0);

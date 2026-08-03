@@ -12,7 +12,8 @@ import {
 
 const USAGE = `moshpit-name — the Moshpit namespace rules
 
-  moshpit-name check <ending> [--json]  can this ending be claimed, and if not why
+  moshpit-name check <ending...> [--json]
+                                        can these endings be claimed, and if not why
   moshpit-name parse <name> [--json]    split a name into its label and ending
   moshpit-name list [-] [--limit N] [--json]
                                         parse up to N pasted entries; - reads stdin
@@ -22,21 +23,38 @@ const USAGE = `moshpit-name — the Moshpit namespace rules
 Pure rules, no network. The same answers the registry gives, without asking it.`;
 
 const [sub, ...rawRest] = process.argv.slice(2);
-const json = rawRest.includes("--json");
+let json = false;
 const rest = [];
 let limit = MAX_BULK_TLDS;
 let limitValue;
 let limitFlags = 0;
+let optionError = null;
+let parsingOptions = true;
 for (let index = 0; index < rawRest.length; index++) {
   const arg = rawRest[index];
-  if (arg === "--json") continue;
-  if (arg === "--limit") {
+  if (parsingOptions && arg === "--") {
+    parsingOptions = false;
+    continue;
+  }
+  if (parsingOptions && arg === "--json") {
+    json = true;
+    continue;
+  }
+  if (parsingOptions && arg === "--limit") {
+    if (sub !== "list") {
+      optionError ??= 'unknown option "--limit"';
+      continue;
+    }
     limitFlags++;
     const candidate = rawRest[index + 1];
     if (candidate !== undefined && !candidate.startsWith("--")) {
       limitValue = candidate;
       index++;
     }
+    continue;
+  }
+  if (parsingOptions && arg.startsWith("--")) {
+    optionError ??= `unknown option "${arg}"`;
     continue;
   }
   rest.push(arg);
@@ -55,19 +73,47 @@ if (!sub || sub === "help" || sub === "--help") {
   process.exit(0);
 }
 
+if (optionError) {
+  if (json) outJson({ error: optionError });
+  else console.error(`moshpit-name: ${optionError}`);
+  process.exit(1);
+}
+
 if (sub === "check") {
-  const raw = rest[0];
-  const tld = normalizeTld(raw);
-  if (!tld) {
-    const reason = "not a valid ending (letters, digits and dashes only, no dots)";
-    if (json) outJson({ input: raw ?? null, tld: null, claimable: false, reason });
-    else out(`.${raw ?? ""} — ${reason}`);
-    process.exit(1);
+  const inputs = rest.length ? rest : [undefined];
+  const results = inputs.map((input) => {
+    const tld = normalizeTld(input);
+    if (!tld) {
+      return {
+        input: input ?? null,
+        tld: null,
+        claimable: false,
+        reason: "not a valid ending (letters, digits and dashes only, no dots)",
+      };
+    }
+    const reason = tldRejection(tld);
+    return { input, tld, claimable: !reason, reason };
+  });
+
+  if (json) {
+    if (results.length === 1) outJson(results[0]);
+    else {
+      const claimableCount = results.filter((result) => result.claimable).length;
+      outJson({
+        count: results.length,
+        claimableCount,
+        rejectedCount: results.length - claimableCount,
+        results,
+      });
+    }
+  } else {
+    for (const result of results) {
+      out(result.claimable
+        ? `.${result.tld} — claimable`
+        : `.${result.tld ?? result.input ?? ""} — ${result.reason}`);
+    }
   }
-  const why = tldRejection(tld);
-  if (json) outJson({ input: raw, tld, claimable: !why, reason: why });
-  else out(why ? `.${tld} — ${why}` : `.${tld} — claimable`);
-  process.exit(why ? 1 : 0);
+  process.exit(results.some((result) => !result.claimable) ? 1 : 0);
 }
 
 if (sub === "parse") {
