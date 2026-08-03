@@ -1,7 +1,7 @@
 # Managed by sh1pt Actions Fleet
-# pack: threatcrush-scan@1.0.2
+# pack: threatcrush-scan@1.1.0
 # install: sh1pt-actions-store
-# hash: sha256:d23303c360b8944d998f4e608923cf13a73cdfd5e7974c30b070a0fbe08e37c8
+# hash: sha256:8b7430185637af9aea9bef6223b7ed1754a7f1c5e0d78ad058d47832a1ac46d3
 name: threatcrush security scan
 
 on:
@@ -49,25 +49,23 @@ jobs:
           threatcrush --version || true
           threatcrush scan --help || true
 
-      # Fail closed when the installed CLI cannot do what this workflow asks.
+      # Which interface does the installed CLI actually have?
       #
-      # Found the hard way. `@profullstack/threatcrush@0.2.2` has no `--format`,
-      # so the scan died with `error: unknown option '--format'` and commander
-      # exited 1 — the same code the CLI uses for "findings at or above
-      # --fail-on". The step read that as a result, no SARIF was written, the
-      # empty-run fallback below supplied one, and the PR comment said
-      # "0 findings". Green check, nothing scanned.
-      #
-      # Exit codes alone cannot separate "argument rejected" from "findings
-      # found", so do not try. Check the interface up front instead, and refuse
-      # to run a scan whose output we would not be able to trust.
-      - name: Verify the CLI supports SARIF
+      # Determined up front rather than inferred from an exit code, because
+      # exit codes cannot tell the two failures apart. `0.2.2` has no
+      # `--format`: the scan died with `error: unknown option '--format'` and
+      # commander exited 1 — the same code the CLI uses for "findings at or
+      # above --fail-on". Read as a result, that produced a green check and a
+      # "0 findings" comment on a repository nothing had scanned.
+      - name: Detect the CLI output interface
+        id: iface
         run: |
-          if ! threatcrush scan --help 2>&1 | grep -q -- '--format'; then
-            echo "::error::The installed ThreatCrush CLI ($(threatcrush --version 2>/dev/null || echo 'unknown')) does not support --format."
-            echo "::error::This workflow needs native SARIF output. Upgrade the CLI, or pin threatcrushPackageSpec to a version that has it."
-            echo "::error::Refusing to run: a scan whose output cannot be read would report 0 findings, which is indistinguishable from a clean result."
-            exit 1
+          if threatcrush scan --help 2>&1 | grep -q -- '--format'; then
+            echo "native=true" >> "$GITHUB_OUTPUT"
+            echo "Native SARIF output available."
+          else
+            echo "native=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::CLI $(threatcrush --version 2>/dev/null || echo unknown) predates --format; converting terminal output instead."
           fi
 
       - name: Scan
@@ -75,13 +73,35 @@ jobs:
         run: |
           set -o pipefail
           FAIL_ON=""
-          ARGS=(scan "." --format sarif --output threatcrush.sarif)
-          if [ -n "$FAIL_ON" ]; then
-            ARGS+=(--fail-on "$FAIL_ON")
-          fi
-
+          SCAN_PATH="."
           code=0
-          threatcrush "${ARGS[@]}" || code=$?
+
+          if [ "${{ steps.iface.outputs.native }}" = "true" ]; then
+            ARGS=(scan "$SCAN_PATH" --format sarif --output threatcrush.sarif)
+            if [ -n "$FAIL_ON" ]; then
+              ARGS+=(--fail-on "$FAIL_ON")
+            fi
+            threatcrush "${ARGS[@]}" || code=$?
+          else
+            # Compatibility path for CLIs older than native SARIF. The
+            # converter fails closed: if it cannot recognise the output it
+            # exits non-zero and writes nothing, so an unparseable scan can
+            # never arrive downstream looking like a clean one.
+            threatcrush scan "$SCAN_PATH" 2>&1 | tee threatcrush-output.txt || true
+            PREFIX=""
+            if [ "$SCAN_PATH" != "." ]; then
+              # Paths in terminal output are relative to the scan root. Left
+              # unprefixed they resolve to nothing in the repository view, and
+              # every finding reads as out-of-scope.
+              PREFIX="$SCAN_PATH"
+            fi
+            python3 .github/threatcrush-to-sarif.py \
+              --input threatcrush-output.txt \
+              --output threatcrush.sarif \
+              --path-prefix "$PREFIX" \
+              --tool-version "$(threatcrush --version 2>/dev/null || echo unknown)" \
+              --fail-on "$FAIL_ON" || code=$?
+          fi
 
           # The SARIF file is the evidence that a scan happened, and it is the
           # only evidence worth trusting. An exit code says what the process
