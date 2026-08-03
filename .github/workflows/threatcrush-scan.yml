@@ -1,7 +1,7 @@
 # Managed by sh1pt Actions Fleet
-# pack: threatcrush-scan@1.0.0
+# pack: threatcrush-scan@1.0.1
 # install: sh1pt-actions-store
-# hash: sha256:cf80fbc534cbb7b716b3b7bd5d541c9d6a231c05606caf57d94408b7bd2b0898
+# hash: sha256:94dfa939de4b1e9ed457732a95c6194281eace71ab563e1190f6ccf6af7a98d5
 name: threatcrush security scan
 
 on:
@@ -49,6 +49,27 @@ jobs:
           threatcrush --version || true
           threatcrush scan --help || true
 
+      # Fail closed when the installed CLI cannot do what this workflow asks.
+      #
+      # Found the hard way. `@profullstack/threatcrush@0.2.2` has no `--format`,
+      # so the scan died with `error: unknown option '--format'` and commander
+      # exited 1 — the same code the CLI uses for "findings at or above
+      # --fail-on". The step read that as a result, no SARIF was written, the
+      # empty-run fallback below supplied one, and the PR comment said
+      # "0 findings". Green check, nothing scanned.
+      #
+      # Exit codes alone cannot separate "argument rejected" from "findings
+      # found", so do not try. Check the interface up front instead, and refuse
+      # to run a scan whose output we would not be able to trust.
+      - name: Verify the CLI supports SARIF
+        run: |
+          if ! threatcrush scan --help 2>&1 | grep -q -- '--format'; then
+            echo "::error::The installed ThreatCrush CLI ($(threatcrush --version 2>/dev/null || echo 'unknown')) does not support --format."
+            echo "::error::This workflow needs native SARIF output. Upgrade the CLI, or pin threatcrushPackageSpec to a version that has it."
+            echo "::error::Refusing to run: a scan whose output cannot be read would report 0 findings, which is indistinguishable from a clean result."
+            exit 1
+          fi
+
       - name: Scan
         id: scan
         run: |
@@ -59,25 +80,41 @@ jobs:
             ARGS+=(--fail-on "$FAIL_ON")
           fi
 
-          if threatcrush "${ARGS[@]}"; then
-            echo "status=clean" >> "$GITHUB_OUTPUT"
-          else
-            code=$?
-            # 1 is "findings at or above --fail-on" — a result. 2 is "the scan
-            # itself failed" — not a result, and it must not be reported as a
-            # clean bill of health.
-            if [ "$code" -eq 1 ]; then
-              echo "status=findings" >> "$GITHUB_OUTPUT"
-            else
-              echo "status=error" >> "$GITHUB_OUTPUT"
-              echo "::error::ThreatCrush scan failed with exit code ${code} — this diff was NOT scanned"
-              exit "$code"
-            fi
+          code=0
+          threatcrush "${ARGS[@]}" || code=$?
+
+          # The SARIF file is the evidence that a scan happened, and it is the
+          # only evidence worth trusting. An exit code says what the process
+          # thought; the file says what it produced. Absent the file there is
+          # nothing to report, and reporting nothing as "no findings" is the
+          # failure this whole workflow is arranged to avoid.
+          if [ ! -s threatcrush.sarif ]; then
+            echo "status=error" >> "$GITHUB_OUTPUT"
+            echo "::error::ThreatCrush produced no SARIF (exit ${code}) — this diff was NOT scanned"
+            exit 1
           fi
 
-      # The scan writes SARIF whenever it completes. If it did not, the upload
-      # below would fail on a missing file and bury the real error, so write a
-      # valid empty run and let the job's own exit code carry the failure.
+          case "$code" in
+            0) echo "status=clean" >> "$GITHUB_OUTPUT" ;;
+            # Exit 1 *with* a SARIF file is the documented "findings at or
+            # above --fail-on" result. Without one it was caught above. The CLI
+            # only returns 1 when --fail-on was passed, so propagate it: a gate
+            # that records the finding and then lets the job pass is not a gate.
+            1)
+              echo "status=findings" >> "$GITHUB_OUTPUT"
+              exit 1
+              ;;
+            *)
+              echo "status=error" >> "$GITHUB_OUTPUT"
+              echo "::error::ThreatCrush scan failed with exit code ${code} — results may be incomplete"
+              exit "$code"
+              ;;
+          esac
+
+      # Reached only when the scan step already failed the job. The empty run
+      # exists so the upload does not error on a missing file and bury the real
+      # cause; it is not a result. The scan step has already set status=error,
+      # so the report says NOT RUN rather than rendering this as a clean scan.
       - name: Ensure SARIF exists
         if: always()
         run: |
