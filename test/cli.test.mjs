@@ -3,7 +3,9 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { CHILD_PRICE_USD, ENDING_PRICE_USD, RESERVED_TLDS } from "../lib/index.mjs";
+import {
+  CHILD_PRICE_USD, ENDING_PRICE_USD, MAX_BULK_TLDS, RESERVED_TLDS,
+} from "../lib/index.mjs";
 
 const BIN = fileURLToPath(new URL("../bin/moshpit-name.mjs", import.meta.url));
 
@@ -87,6 +89,68 @@ test("list --json emits the complete parse result from stdin", () => {
     names: [{ tld: "eggs", label: "blue" }],
     skipped: 0,
   });
+});
+
+test("list --limit caps stdin input and reports skipped entries in JSON", () => {
+  const result = run(
+    ["list", "-", "--limit", "2", "--json"],
+    ".Eggs\nblue.eggs\nyeah\noranges\n",
+  );
+
+  assert.equal(result.status, 0);
+  assert.deepEqual(output(result), {
+    entries: [
+      { tld: "eggs", label: null, aliasOf: null, priceUsd: null },
+      { tld: "eggs", label: "blue", aliasOf: null, priceUsd: null },
+    ],
+    tlds: ["eggs"],
+    names: [{ tld: "eggs", label: "blue" }],
+    skipped: 2,
+  });
+});
+
+test("list --limit uses the configured limit in the human summary", () => {
+  const result = run(["list", "eggs", "yeah", "oranges", "--limit", "2"]);
+
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr, "");
+  assert.equal(result.stdout, ".eggs\n.yeah\n\n2 endings, 1 past the 2 limit\n");
+});
+
+test("list --limit rejects missing, invalid, zero, fractional, and oversized values", () => {
+  for (const value of [
+    undefined, "nope", "0", "-1", "1.5", "1e3",
+    String(MAX_BULK_TLDS + 1), "9007199254740992",
+  ]) {
+    const args = ["list", "--limit"];
+    if (value !== undefined) args.push(value);
+    const result = run(args, "eggs\n");
+
+    assert.equal(result.status, 1, value);
+    assert.equal(result.stdout, "", value);
+    assert.equal(
+      result.stderr,
+      `moshpit-name: --limit must be an integer from 1 to ${MAX_BULK_TLDS}\n`,
+      value,
+    );
+  }
+});
+
+test("list --limit validation stays machine-readable with --json", () => {
+  const result = run(["list", "--limit", "--json"], "eggs\n");
+
+  assert.equal(result.status, 1);
+  assert.equal(result.stderr, "");
+  assert.deepEqual(output(result), {
+    error: `--limit must be an integer from 1 to ${MAX_BULK_TLDS}`,
+  });
+});
+
+test("list --limit accepts the package maximum", () => {
+  const result = run(["list", "--limit", String(MAX_BULK_TLDS), "-", "--json"], "eggs\n");
+
+  assert.equal(result.status, 0);
+  assert.equal(output(result).skipped, 0);
 });
 
 test("reserved lists the complete set in stable order", () => {

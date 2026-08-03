@@ -14,7 +14,8 @@ const USAGE = `moshpit-name — the Moshpit namespace rules
 
   moshpit-name check <ending> [--json]  can this ending be claimed, and if not why
   moshpit-name parse <name> [--json]    split a name into its label and ending
-  moshpit-name list [-] [--json]        parse a pasted list; - reads stdin
+  moshpit-name list [-] [--limit N] [--json]
+                                        parse up to N pasted entries; - reads stdin
   moshpit-name reserved [--json]        list endings that cannot be claimed
   moshpit-name prices [--json]          what an ending and a name cost
 
@@ -22,7 +23,24 @@ Pure rules, no network. The same answers the registry gives, without asking it.`
 
 const [sub, ...rawRest] = process.argv.slice(2);
 const json = rawRest.includes("--json");
-const rest = rawRest.filter((arg) => arg !== "--json");
+const rest = [];
+let limit = MAX_BULK_TLDS;
+let limitValue;
+let limitFlags = 0;
+for (let index = 0; index < rawRest.length; index++) {
+  const arg = rawRest[index];
+  if (arg === "--json") continue;
+  if (arg === "--limit") {
+    limitFlags++;
+    const candidate = rawRest[index + 1];
+    if (candidate !== undefined && !candidate.startsWith("--")) {
+      limitValue = candidate;
+      index++;
+    }
+    continue;
+  }
+  rest.push(arg);
+}
 const out = console.log;
 const outJson = (value) => out(JSON.stringify(value, null, 2));
 
@@ -69,8 +87,24 @@ if (sub === "parse") {
 }
 
 if (sub === "list") {
+  const parsedLimit = Number(limitValue);
+  const validLimit = limitFlags === 0 || (
+    limitFlags === 1
+    && /^\d+$/.test(limitValue ?? "")
+    && Number.isSafeInteger(parsedLimit)
+    && parsedLimit >= 1
+    && parsedLimit <= MAX_BULK_TLDS
+  );
+  if (!validLimit) {
+    const error = `--limit must be an integer from 1 to ${MAX_BULK_TLDS}`;
+    if (json) outJson({ error });
+    else console.error(`moshpit-name: ${error}`);
+    process.exit(1);
+  }
+  if (limitFlags === 1) limit = parsedLimit;
+
   const input = rest[0] === "-" || !rest.length ? await readStdin() : rest.join("\n");
-  const parsed = parseTldList(input);
+  const parsed = parseTldList(input, limit);
   if (json) {
     outJson(parsed);
     process.exit(0);
@@ -96,7 +130,7 @@ if (sub === "list") {
   const names = entries.length - endings;
   const counted = [`${endings} ending${endings === 1 ? "" : "s"}`];
   if (names) counted.push(`${names} name${names === 1 ? "" : "s"}`);
-  out(`\n${counted.join(", ")}${skipped ? `, ${skipped} past the ${MAX_BULK_TLDS} limit` : ""}`);
+  out(`\n${counted.join(", ")}${skipped ? `, ${skipped} past the ${limit} limit` : ""}`);
   process.exit(0);
 }
 
