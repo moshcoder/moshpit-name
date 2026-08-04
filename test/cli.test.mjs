@@ -25,6 +25,13 @@ test("commands stay human-readable unless --json is requested", () => {
   assert.equal(result.stdout, ".420 — claimable\n");
 });
 
+test("help documents the batch parse syntax", () => {
+  const result = run(["--help"]);
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr, "");
+  assert.match(result.stdout, /moshpit-name parse <name\.\.\.> \[--json\]/);
+});
+
 test("check --json describes claimable, reserved, and malformed endings", () => {
   const claimable = run(["check", ".420", "--json"]);
   assert.equal(claimable.status, 0);
@@ -126,6 +133,50 @@ test("parse --json returns normalized fields and structured invalid output", () 
     tld: null,
     reason: "not a Moshpit name (one label and one ending; both numeric reads as an address)",
   });
+});
+
+test("parse validates multiple names while preserving input order", () => {
+  const result = run(["parse", " Blue.EGGS ", "1.420", "red.420", "--json"]);
+
+  assert.equal(result.status, 1);
+  assert.deepEqual(output(result), {
+    count: 3,
+    validCount: 2,
+    invalidCount: 1,
+    results: [
+      {
+        input: " Blue.EGGS ",
+        valid: true,
+        label: "blue",
+        tld: "eggs",
+        reason: null,
+      },
+      {
+        input: "1.420",
+        valid: false,
+        label: null,
+        tld: null,
+        reason: "not a Moshpit name (one label and one ending; both numeric reads as an address)",
+      },
+      {
+        input: "red.420",
+        valid: true,
+        label: "red",
+        tld: "420",
+        reason: null,
+      },
+    ],
+  });
+
+  const human = run(["parse", "Blue.EGGS", "1.420", "red.420"]);
+  assert.equal(human.status, 1);
+  assert.equal(human.stderr, "");
+  assert.equal(
+    human.stdout,
+    "blue.eggs   label=blue  ending=eggs\n"
+    + "1.420 — not a Moshpit name (one label and one ending; both numeric reads as an address)\n"
+    + "red.420   label=red  ending=420\n",
+  );
 });
 
 test("list --json emits the complete parse result from stdin", () => {

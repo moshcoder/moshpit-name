@@ -14,7 +14,8 @@ const USAGE = `moshpit-name — the Moshpit namespace rules
 
   moshpit-name check <ending...> [--json]
                                         can these endings be claimed, and if not why
-  moshpit-name parse <name> [--json]    split a name into its label and ending
+  moshpit-name parse <name...> [--json]
+                                        split names into their labels and endings
   moshpit-name list [-] [--limit N] [--json]
                                         parse up to N pasted entries; - reads stdin
   moshpit-name reserved [--json]        list endings that cannot be claimed
@@ -117,19 +118,37 @@ if (sub === "check") {
 }
 
 if (sub === "parse") {
-  const input = rest[0];
-  const parsed = parseMoshpitName(input);
-  if (!parsed) {
-    // The two ways this fails are worth telling apart: too many labels, and a
-    // pair of numbers that reads as an IPv4 literal.
-    const reason = "not a Moshpit name (one label and one ending; both numeric reads as an address)";
-    if (json) outJson({ input: input ?? null, valid: false, label: null, tld: null, reason });
-    else out(`${input ?? ""} — ${reason}`);
-    process.exit(1);
+  const inputs = rest.length ? rest : [undefined];
+  const reason = "not a Moshpit name (one label and one ending; both numeric reads as an address)";
+  const results = inputs.map((input) => {
+    const parsed = parseMoshpitName(input);
+    if (!parsed) {
+      // The two ways this fails are worth telling apart: too many labels, and
+      // a pair of numbers that reads as an IPv4 literal.
+      return { input: input ?? null, valid: false, label: null, tld: null, reason };
+    }
+    return { input, valid: true, ...parsed, reason: null };
+  });
+
+  if (json) {
+    if (results.length === 1) outJson(results[0]);
+    else {
+      const validCount = results.filter((result) => result.valid).length;
+      outJson({
+        count: results.length,
+        validCount,
+        invalidCount: results.length - validCount,
+        results,
+      });
+    }
+  } else {
+    for (const result of results) {
+      out(result.valid
+        ? `${result.label}.${result.tld}   label=${result.label}  ending=${result.tld}`
+        : `${result.input ?? ""} — ${result.reason}`);
+    }
   }
-  if (json) outJson({ input, valid: true, ...parsed, reason: null });
-  else out(`${parsed.label}.${parsed.tld}   label=${parsed.label}  ending=${parsed.tld}`);
-  process.exit(0);
+  process.exit(results.some((result) => !result.valid) ? 1 : 0);
 }
 
 if (sub === "list") {
