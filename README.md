@@ -36,7 +36,8 @@ catch drift between two copies is a good sign the copies should be one thing.
 ```sh
 moshpit-name check <ending...> [--json]
                                       can these endings be claimed, and if not why
-moshpit-name parse <name> [--json]    split a name into its label and ending
+moshpit-name parse <name...> [--json]
+                                      split names into their labels and endings
 moshpit-name list [-] [--limit N] [--json]
                                        parse up to N pasted entries; - reads stdin
 moshpit-name reserved [--json]        list endings that cannot be claimed
@@ -107,9 +108,10 @@ $ moshpit-name check .420 --json
 }
 ```
 
-For compatibility, `check <ending> --json` returns the established bare result
-object shown above. Passing two or more endings returns the batch wrapper with
-counts and a `results` array.
+For compatibility, `check <ending> --json` and `parse <name> --json` return
+their established bare result objects. Passing two or more inputs returns a
+batch wrapper with counts and a `results` array; results stay in input order and
+any rejected input makes the command exit non-zero.
 
 `list --limit N` stops after `N` unique entries and reports the remainder in
 `skipped`. `N` must be an integer from 1 through 1000, the package's bulk
