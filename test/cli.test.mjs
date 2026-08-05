@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -29,8 +29,97 @@ test("help documents batch arguments and stdin", () => {
   const result = run(["--help"]);
   assert.equal(result.status, 0);
   assert.equal(result.stderr, "");
-  assert.match(result.stdout, /moshpit-name check \(<ending\.\.\.> \| -\) \[--json\]/);
-  assert.match(result.stdout, /moshpit-name parse \(<name\.\.\.> \| -\) \[--json\]/);
+  assert.match(result.stdout, /moshpit-name check \(<ending\.\.\.> \| -\) \[--json \| --ndjson\]/);
+  assert.match(result.stdout, /moshpit-name parse \(<name\.\.\.> \| -\) \[--json \| --ndjson\]/);
+});
+
+test("check --ndjson emits one ordered result per line", () => {
+  const result = run(["check", ".420", ".bank", "two.labels", "--ndjson"]);
+
+  assert.equal(result.status, 1);
+  assert.equal(result.stderr, "");
+  assert.deepEqual(result.stdout.trimEnd().split("\n").map(JSON.parse), [
+    { input: ".420", tld: "420", claimable: true, reason: null },
+    { input: ".bank", tld: "bank", claimable: false, reason: "that name is reserved" },
+    {
+      input: "two.labels",
+      tld: null,
+      claimable: false,
+      reason: "not a valid ending (letters, digits and dashes only, no dots)",
+    },
+  ]);
+});
+
+test("parse --ndjson keeps a single result unwrapped", () => {
+  const result = run(["parse", "Blue.EGGS", "--ndjson"]);
+
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr, "");
+  assert.equal(result.stdout,
+    '{"input":"Blue.EGGS","valid":true,"label":"blue","tld":"eggs","reason":null}\n');
+});
+
+test("list --ndjson emits entries and stays empty for empty input", () => {
+  const result = run(["list", "-", "--limit", "2", "--ndjson"], "eggs\nblue.eggs\noranges\n");
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr, "");
+  assert.deepEqual(result.stdout.trimEnd().split("\n").map(JSON.parse), [
+    { tld: "eggs", label: null, aliasOf: null, priceUsd: null },
+    { tld: "eggs", label: "blue", aliasOf: null, priceUsd: null },
+  ]);
+
+  const empty = run(["list", "-", "--ndjson"], "\n");
+  assert.equal(empty.status, 0);
+  assert.equal(empty.stdout, "");
+  assert.equal(empty.stderr, "");
+});
+
+test("NDJSON validation errors stay machine-readable", () => {
+  const formats = run(["check", ".eggs", "--json", "--ndjson"]);
+  assert.equal(formats.status, 1);
+  assert.equal(formats.stderr, "");
+  assert.deepEqual(JSON.parse(formats.stdout), {
+    error: "--json and --ndjson cannot be used together",
+  });
+
+  const marker = run(["check", ".eggs", "-", "--ndjson"]);
+  assert.equal(marker.status, 1);
+  assert.equal(marker.stderr, "");
+  assert.deepEqual(JSON.parse(marker.stdout), {
+    error: '"-" must be the only input when reading from stdin',
+  });
+
+  const limit = run(["list", "-", "--limit", "0", "--ndjson"], "eggs\n");
+  assert.equal(limit.status, 1);
+  assert.equal(limit.stderr, "");
+  assert.deepEqual(JSON.parse(limit.stdout), {
+    error: "--limit must be an integer from 1 to " + MAX_BULK_TLDS,
+  });
+});
+
+test("check bounds stdin bytes before emitting NDJSON", () => {
+  const result = run(["check", "-", "--ndjson"], "." + "a".repeat(1024 * 1024) + "\n");
+  assert.equal(result.status, 1);
+  assert.equal(result.stderr, "");
+  assert.deepEqual(JSON.parse(result.stdout), { error: "stdin accepts at most 1 MiB" });
+});
+
+test("NDJSON output handles a downstream reader closing the pipe", async () => {
+  const result = await new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [BIN, "check", ".eggs", "--ndjson"], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stderr = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.on("error", reject);
+    child.on("close", (status, signal) => resolve({ status, signal, stderr }));
+    child.stdout.destroy();
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.signal, null);
+  assert.equal(result.stderr, "");
 });
 
 test("check --json describes claimable, reserved, and malformed endings", () => {

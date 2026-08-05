@@ -5,7 +5,7 @@
 // asked over the network — and the answers are pure, so they are the same
 // offline, in CI, and inside a browser extension.
 
-import { createInterface } from "node:readline";
+import { writeFileSync } from "node:fs";
 
 import {
   CHILD_PRICE_USD, ENDING_PRICE_USD, MAX_BULK_TLDS, RESERVED_TLDS,
@@ -14,11 +14,11 @@ import {
 
 const USAGE = `moshpit-name — the Moshpit namespace rules
 
-  moshpit-name check (<ending...> | -) [--json]
+  moshpit-name check (<ending...> | -) [--json | --ndjson]
                                         can endings be claimed; - reads one per line
-  moshpit-name parse (<name...> | -) [--json]
+  moshpit-name parse (<name...> | -) [--json | --ndjson]
                                         split names into labels; - reads one per line
-  moshpit-name list [-] [--limit N] [--json]
+  moshpit-name list [-] [--limit N] [--json | --ndjson]
                                         parse up to N pasted entries; - reads stdin
   moshpit-name reserved [--json]        list endings that cannot be claimed
   moshpit-name prices [--json]          what an ending and a name cost
@@ -27,6 +27,7 @@ Pure rules, no network. The same answers the registry gives, without asking it.`
 
 const [sub, ...rawRest] = process.argv.slice(2);
 let json = false;
+let ndjson = false;
 const rest = [];
 let limit = MAX_BULK_TLDS;
 let limitValue;
@@ -41,6 +42,14 @@ for (let index = 0; index < rawRest.length; index++) {
   }
   if (parsingOptions && arg === "--json") {
     json = true;
+    continue;
+  }
+  if (parsingOptions && arg === "--ndjson") {
+    if (!["check", "parse", "list"].includes(sub)) {
+      optionError ??= 'unknown option "--ndjson"';
+    } else {
+      ndjson = true;
+    }
     continue;
   }
   if (parsingOptions && arg === "--limit") {
@@ -62,8 +71,21 @@ for (let index = 0; index < rawRest.length; index++) {
   }
   rest.push(arg);
 }
+if (json && ndjson) optionError ??= "--json and --ndjson cannot be used together";
 const out = console.log;
-const outJson = (value) => out(JSON.stringify(value, null, 2));
+const writeStdout = (value) => {
+  try {
+    writeFileSync(1, value);
+  } catch (error) {
+    if (error?.code === "EPIPE") process.exit(0);
+    throw error;
+  }
+};
+const outJson = (value) => writeStdout(`${JSON.stringify(value, null, 2)}\n`);
+const outNdjson = (values) => {
+  if (values.length) writeStdout(`${values.map((value) => JSON.stringify(value)).join("\n")}\n`);
+};
+const MAX_STDIN_BYTES = 1024 * 1024;
 
 const readStdin = async () => {
   let data = "";
@@ -72,9 +94,19 @@ const readStdin = async () => {
 };
 
 const readCommandStdin = async () => {
+  const chunks = [];
+  let bytes = 0;
+  for await (const chunk of process.stdin) {
+    const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += data.length;
+    if (bytes > MAX_STDIN_BYTES) {
+      return { lines: [], error: "stdin accepts at most 1 MiB" };
+    }
+    chunks.push(data);
+  }
+
   const lines = [];
-  const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
-  for await (const line of input) {
+  for (const line of Buffer.concat(chunks).toString("utf8").split(/\r?\n/)) {
     if (!line.trim()) continue;
     if (lines.length === MAX_BULK_TLDS) {
       return {
@@ -89,6 +121,13 @@ const readCommandStdin = async () => {
 
 const commandInputs = async (args) => {
   const fromStdin = args.length === 1 && args[0] === "-";
+  if (!fromStdin && args.includes("-")) {
+    return {
+      inputs: [],
+      fromStdin: false,
+      error: '"-" must be the only input when reading from stdin',
+    };
+  }
   if (!fromStdin) {
     return { inputs: args.length ? args : [undefined], fromStdin, error: null };
   }
@@ -102,7 +141,8 @@ const commandInputs = async (args) => {
 };
 
 const exitInputError = (error) => {
-  if (json) outJson({ error });
+  if (ndjson) outNdjson([{ error }]);
+  else if (json) outJson({ error });
   else console.error(`moshpit-name: ${error}`);
   process.exit(1);
 };
@@ -113,7 +153,8 @@ if (!sub || sub === "help" || sub === "--help") {
 }
 
 if (optionError) {
-  if (json) outJson({ error: optionError });
+  if (ndjson) outNdjson([{ error: optionError }]);
+  else if (json) outJson({ error: optionError });
   else console.error(`moshpit-name: ${optionError}`);
   process.exit(1);
 }
@@ -135,7 +176,8 @@ if (sub === "check") {
     return { input, tld, claimable: !reason, reason };
   });
 
-  if (json) {
+  if (ndjson) outNdjson(results);
+  else if (json) {
     if (!fromStdin && results.length === 1) outJson(results[0]);
     else {
       const claimableCount = results.filter((result) => result.claimable).length;
@@ -170,7 +212,8 @@ if (sub === "parse") {
     return { input, valid: true, ...parsed, reason: null };
   });
 
-  if (json) {
+  if (ndjson) outNdjson(results);
+  else if (json) {
     if (!fromStdin && results.length === 1) outJson(results[0]);
     else {
       const validCount = results.filter((result) => result.valid).length;
@@ -202,7 +245,8 @@ if (sub === "list") {
   );
   if (!validLimit) {
     const error = `--limit must be an integer from 1 to ${MAX_BULK_TLDS}`;
-    if (json) outJson({ error });
+    if (ndjson) outNdjson([{ error }]);
+    else if (json) outJson({ error });
     else console.error(`moshpit-name: ${error}`);
     process.exit(1);
   }
@@ -210,6 +254,10 @@ if (sub === "list") {
 
   const input = rest[0] === "-" || !rest.length ? await readStdin() : rest.join("\n");
   const parsed = parseTldList(input, limit);
+  if (ndjson) {
+    outNdjson(parsed.entries);
+    process.exit(0);
+  }
   if (json) {
     outJson(parsed);
     process.exit(0);
