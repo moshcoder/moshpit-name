@@ -25,11 +25,12 @@ test("commands stay human-readable unless --json is requested", () => {
   assert.equal(result.stdout, ".420 — claimable\n");
 });
 
-test("help documents the batch parse syntax", () => {
+test("help documents batch arguments and stdin", () => {
   const result = run(["--help"]);
   assert.equal(result.status, 0);
   assert.equal(result.stderr, "");
-  assert.match(result.stdout, /moshpit-name parse <name\.\.\.> \[--json\]/);
+  assert.match(result.stdout, /moshpit-name check \(<ending\.\.\.> \| -\) \[--json\]/);
+  assert.match(result.stdout, /moshpit-name parse \(<name\.\.\.> \| -\) \[--json\]/);
 });
 
 test("check --json describes claimable, reserved, and malformed endings", () => {
@@ -94,6 +95,60 @@ test("check validates multiple endings in one invocation", () => {
   assert.equal(empty.stderr, "");
   assert.equal(empty.stdout,
     ". — not a valid ending (letters, digits and dashes only, no dots)\n");
+});
+
+test("check reads newline-delimited endings from stdin", () => {
+  const result = run(["check", "-", "--json"], ".420\r\n\r\n.bank\r\ntwo.labels\r\n");
+
+  assert.equal(result.status, 1);
+  assert.deepEqual(output(result), {
+    count: 3,
+    claimableCount: 1,
+    rejectedCount: 2,
+    results: [
+      { input: ".420", tld: "420", claimable: true, reason: null },
+      { input: ".bank", tld: "bank", claimable: false, reason: "that name is reserved" },
+      {
+        input: "two.labels",
+        tld: null,
+        claimable: false,
+        reason: "not a valid ending (letters, digits and dashes only, no dots)",
+      },
+    ],
+  });
+});
+
+test("single-line check stdin keeps the batch JSON shape on success", () => {
+  const result = run(["check", "-", "--json"], ".420\n");
+
+  assert.equal(result.status, 0);
+  assert.deepEqual(output(result), {
+    count: 1,
+    claimableCount: 1,
+    rejectedCount: 0,
+    results: [
+      { input: ".420", tld: "420", claimable: true, reason: null },
+    ],
+  });
+});
+
+test("empty stdin is reported like a missing check input", () => {
+  const missing = run(["check"]);
+  const empty = run(["check", "-"], "\n\r\n");
+  assert.equal(empty.status, 1);
+  assert.equal(empty.stdout, missing.stdout);
+  assert.equal(empty.stderr, missing.stderr);
+});
+
+test("check rejects stdin beyond the bulk ceiling without a stack trace", () => {
+  const input = Array.from({ length: MAX_BULK_TLDS + 1 }, () => ".eggs").join("\n");
+  const result = run(["check", "-", "--json"], input);
+
+  assert.equal(result.status, 1);
+  assert.equal(result.stderr, "");
+  assert.deepEqual(output(result), {
+    error: `stdin accepts at most ${MAX_BULK_TLDS} non-empty lines`,
+  });
 });
 
 test("check rejects unknown options and supports an end-of-options separator", () => {
@@ -177,6 +232,50 @@ test("parse validates multiple names while preserving input order", () => {
     + "1.420 — not a Moshpit name (one label and one ending; both numeric reads as an address)\n"
     + "red.420   label=red  ending=420\n",
   );
+});
+
+test("parse reads newline-delimited names from stdin", () => {
+  const result = run(["parse", "--json", "-"], " Blue.EGGS \n\n1.420\nred.420\n");
+
+  assert.equal(result.status, 1);
+  assert.deepEqual(output(result), {
+    count: 3,
+    validCount: 2,
+    invalidCount: 1,
+    results: [
+      { input: " Blue.EGGS ", valid: true, label: "blue", tld: "eggs", reason: null },
+      {
+        input: "1.420",
+        valid: false,
+        label: null,
+        tld: null,
+        reason: "not a Moshpit name (one label and one ending; both numeric reads as an address)",
+      },
+      { input: "red.420", valid: true, label: "red", tld: "420", reason: null },
+    ],
+  });
+});
+
+test("single-line parse stdin keeps the batch JSON shape on success", () => {
+  const result = run(["parse", "-", "--json"], "Blue.EGGS\n");
+
+  assert.equal(result.status, 0);
+  assert.deepEqual(output(result), {
+    count: 1,
+    validCount: 1,
+    invalidCount: 0,
+    results: [
+      { input: "Blue.EGGS", valid: true, label: "blue", tld: "eggs", reason: null },
+    ],
+  });
+});
+
+test("empty stdin is reported like a missing parse input", () => {
+  const missing = run(["parse"]);
+  const empty = run(["parse", "-"], "");
+  assert.equal(empty.status, 1);
+  assert.equal(empty.stdout, missing.stdout);
+  assert.equal(empty.stderr, missing.stderr);
 });
 
 test("list --json emits the complete parse result from stdin", () => {

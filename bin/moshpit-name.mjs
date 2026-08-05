@@ -5,6 +5,8 @@
 // asked over the network — and the answers are pure, so they are the same
 // offline, in CI, and inside a browser extension.
 
+import { createInterface } from "node:readline";
+
 import {
   CHILD_PRICE_USD, ENDING_PRICE_USD, MAX_BULK_TLDS, RESERVED_TLDS,
   normalizeTld, parseMoshpitName, parseTldList, tldRejection,
@@ -12,10 +14,10 @@ import {
 
 const USAGE = `moshpit-name — the Moshpit namespace rules
 
-  moshpit-name check <ending...> [--json]
-                                        can these endings be claimed, and if not why
-  moshpit-name parse <name...> [--json]
-                                        split names into their labels and endings
+  moshpit-name check (<ending...> | -) [--json]
+                                        can endings be claimed; - reads one per line
+  moshpit-name parse (<name...> | -) [--json]
+                                        split names into labels; - reads one per line
   moshpit-name list [-] [--limit N] [--json]
                                         parse up to N pasted entries; - reads stdin
   moshpit-name reserved [--json]        list endings that cannot be claimed
@@ -69,6 +71,42 @@ const readStdin = async () => {
   return data;
 };
 
+const readCommandStdin = async () => {
+  const lines = [];
+  const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
+  for await (const line of input) {
+    if (!line.trim()) continue;
+    if (lines.length === MAX_BULK_TLDS) {
+      return {
+        lines: [],
+        error: `stdin accepts at most ${MAX_BULK_TLDS} non-empty lines`,
+      };
+    }
+    lines.push(line);
+  }
+  return { lines, error: null };
+};
+
+const commandInputs = async (args) => {
+  const fromStdin = args.length === 1 && args[0] === "-";
+  if (!fromStdin) {
+    return { inputs: args.length ? args : [undefined], fromStdin, error: null };
+  }
+
+  const { lines, error } = await readCommandStdin();
+  return {
+    inputs: lines.length ? lines : [undefined],
+    fromStdin,
+    error,
+  };
+};
+
+const exitInputError = (error) => {
+  if (json) outJson({ error });
+  else console.error(`moshpit-name: ${error}`);
+  process.exit(1);
+};
+
 if (!sub || sub === "help" || sub === "--help") {
   out(USAGE);
   process.exit(0);
@@ -81,7 +119,8 @@ if (optionError) {
 }
 
 if (sub === "check") {
-  const inputs = rest.length ? rest : [undefined];
+  const { inputs, fromStdin, error } = await commandInputs(rest);
+  if (error) exitInputError(error);
   const results = inputs.map((input) => {
     const tld = normalizeTld(input);
     if (!tld) {
@@ -97,7 +136,7 @@ if (sub === "check") {
   });
 
   if (json) {
-    if (results.length === 1) outJson(results[0]);
+    if (!fromStdin && results.length === 1) outJson(results[0]);
     else {
       const claimableCount = results.filter((result) => result.claimable).length;
       outJson({
@@ -118,7 +157,8 @@ if (sub === "check") {
 }
 
 if (sub === "parse") {
-  const inputs = rest.length ? rest : [undefined];
+  const { inputs, fromStdin, error } = await commandInputs(rest);
+  if (error) exitInputError(error);
   const reason = "not a Moshpit name (one label and one ending; both numeric reads as an address)";
   const results = inputs.map((input) => {
     const parsed = parseMoshpitName(input);
@@ -131,7 +171,7 @@ if (sub === "parse") {
   });
 
   if (json) {
-    if (results.length === 1) outJson(results[0]);
+    if (!fromStdin && results.length === 1) outJson(results[0]);
     else {
       const validCount = results.filter((result) => result.valid).length;
       outJson({

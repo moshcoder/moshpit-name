@@ -34,10 +34,10 @@ catch drift between two copies is a good sign the copies should be one thing.
 ## CLI
 
 ```sh
-moshpit-name check <ending...> [--json]
-                                      can these endings be claimed, and if not why
-moshpit-name parse <name...> [--json]
-                                      split names into their labels and endings
+moshpit-name check (<ending...> | -) [--json]
+                                      can endings be claimed; - reads one per line
+moshpit-name parse (<name...> | -) [--json]
+                                      split names into labels; - reads one per line
 moshpit-name list [-] [--limit N] [--json]
                                        parse up to N pasted entries; - reads stdin
 moshpit-name reserved [--json]        list endings that cannot be claimed
@@ -112,6 +112,11 @@ For compatibility, `check <ending> --json` and `parse <name> --json` return
 their established bare result objects. Passing two or more inputs returns a
 batch wrapper with counts and a `results` array; results stay in input order and
 any rejected input makes the command exit non-zero.
+
+Pass `-` as the only input to `check` or `parse` to read up to 1000 non-empty
+lines from stdin. Stdin JSON always uses the batch wrapper, even for one line,
+so a pipeline receives a stable shape. More than 1000 lines is an error. An
+empty stream is treated like a missing input and exits non-zero.
 
 `list --limit N` stops after `N` unique entries and reports the remainder in
 `skipped`. `N` must be an integer from 1 through 1000, the package's bulk
