@@ -34,11 +34,11 @@ catch drift between two copies is a good sign the copies should be one thing.
 ## CLI
 
 ```sh
-moshpit-name check (<ending...> | -) [--json]
+moshpit-name check (<ending...> | -) [--json | --ndjson]
                                       can endings be claimed; - reads one per line
-moshpit-name parse (<name...> | -) [--json]
+moshpit-name parse (<name...> | -) [--json | --ndjson]
                                       split names into labels; - reads one per line
-moshpit-name list [-] [--limit N] [--json]
+moshpit-name list [-] [--limit N] [--json | --ndjson]
                                        parse up to N pasted entries; - reads stdin
 moshpit-name reserved [--json]        list endings that cannot be claimed
 moshpit-name prices [--json]          what an ending and a name cost
@@ -117,6 +117,18 @@ Pass `-` as the only input to `check` or `parse` to read up to 1000 non-empty
 lines from stdin. Stdin JSON always uses the batch wrapper, even for one line,
 so a pipeline receives a stable shape. More than 1000 lines is an error. An
 empty stream is treated like a missing input and exits non-zero.
+
+Use `--ndjson` with `check`, `parse`, or `list` when each result should be a
+compact JSON object on its own line. This keeps input order, writes even a
+single result as one record, and preserves the command's normal exit status.
+For `list`, the records are the parsed entries; an empty list produces no
+records. `--json` and `--ndjson` cannot be combined.
+
+```sh
+$ printf '.eggs\n.bank\n' | moshpit-name check - --ndjson
+{"input":".eggs","tld":"eggs","claimable":true,"reason":null}
+{"input":".bank","tld":"bank","claimable":false,"reason":"that name is reserved"}
+```
 
 `list --limit N` stops after `N` unique entries and reports the remainder in
 `skipped`. `N` must be an integer from 1 through 1000, the package's bulk
