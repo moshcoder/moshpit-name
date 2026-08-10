@@ -104,6 +104,18 @@ test("check bounds stdin bytes before emitting NDJSON", () => {
   assert.deepEqual(JSON.parse(result.stdout), { error: "stdin accepts at most 1 MiB" });
 });
 
+test("list bounds both explicit and implicit stdin", () => {
+  const input = Array.from({ length: MAX_BULK_TLDS + 1 }, (_, index) => `name${index}.eggs`).join("\n");
+  for (const args of [["list", "-", "--json"], ["list", "--json"]]) {
+    const result = run(args, input);
+    assert.equal(result.status, 1);
+    assert.equal(result.stderr, "");
+    assert.deepEqual(JSON.parse(result.stdout), {
+      error: `stdin accepts at most ${MAX_BULK_TLDS} non-empty lines`,
+    });
+  }
+});
+
 test("NDJSON output handles a downstream reader closing the pipe", async () => {
   const result = await new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [BIN, "check", ".eggs", "--ndjson"], {

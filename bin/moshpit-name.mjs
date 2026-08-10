@@ -252,7 +252,14 @@ if (sub === "list") {
   }
   if (limitFlags === 1) limit = parsedLimit;
 
-  const input = rest[0] === "-" || !rest.length ? await readStdin() : rest.join("\n");
+  let input;
+  if (rest[0] === "-" || !rest.length) {
+    const stdin = await readCommandStdin();
+    if (stdin.error) exitInputError(stdin.error);
+    input = stdin.lines.join("\n");
+  } else {
+    input = rest.join("\n");
+  }
   const parsed = parseTldList(input, limit);
   if (ndjson) {
     outNdjson(parsed.entries);
