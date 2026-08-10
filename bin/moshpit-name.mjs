@@ -252,6 +252,9 @@ if (sub === "list") {
   }
   if (limitFlags === 1) limit = parsedLimit;
 
+  if (rest.includes("-") && !(rest.length === 1 && rest[0] === "-")) {
+    exitInputError('"-" must be the only input when reading from stdin');
+  }
   let input;
   if (rest[0] === "-" || !rest.length) {
     const stdin = await readCommandStdin();

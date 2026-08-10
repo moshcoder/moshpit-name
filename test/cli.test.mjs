@@ -89,6 +89,13 @@ test("NDJSON validation errors stay machine-readable", () => {
     error: '"-" must be the only input when reading from stdin',
   });
 
+  const listMarker = run(["list", "-", "eggs", "--json"], "oranges\n");
+  assert.equal(listMarker.status, 1);
+  assert.equal(listMarker.stderr, "");
+  assert.deepEqual(JSON.parse(listMarker.stdout), {
+    error: '"-" must be the only input when reading from stdin',
+  });
+
   const limit = run(["list", "-", "--limit", "0", "--ndjson"], "eggs\n");
   assert.equal(limit.status, 1);
   assert.equal(limit.stderr, "");
