@@ -252,6 +252,9 @@ if (sub === "list") {
   }
   if (limitFlags === 1) limit = parsedLimit;
 
+  if (rest.includes("-") && !(rest.length === 1 && rest[0] === "-")) {
+    exitInputError('"-" must be the only input when reading from stdin');
+  }
   const input = rest[0] === "-" || !rest.length ? await readStdin() : rest.join("\n");
   const parsed = parseTldList(input, limit);
   if (ndjson) {
