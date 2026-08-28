@@ -165,6 +165,27 @@ test("a pasted list reads endings and names alike", async (t) => {
       [{ tld: "eggs", label: null, aliasOf: null, priceUsd: 2 }]);
   });
 
+  await t.test("a bare integer is an alias to a numeric ending, not a price", () => {
+    // All-numeric endings are legal — `.420`, `.911` — so an unmarked number
+    // names the ending this line points at. Reading it as a price silently
+    // minted four-figure prices on what were meant to be aliases, and made an
+    // alias to a numeric ending impossible to write at all.
+    assert.deepEqual(parseTldList("eggs 420").entries,
+      [{ tld: "eggs", label: null, aliasOf: "420", priceUsd: null }]);
+    assert.deepEqual(parseTldList("eggs 911 $2").entries,
+      [{ tld: "eggs", label: null, aliasOf: "911", priceUsd: 2 }]);
+    // A name under a numeric ending aliases the same way.
+    assert.deepEqual(parseTldList("eggs blue.420").entries,
+      [{ tld: "eggs", label: null, aliasOf: "blue.420", priceUsd: null }]);
+  });
+
+  await t.test("documented price forms still read as prices", () => {
+    for (const [line, expected] of [["eggs $2", 2], ["eggs 2.00", 2], ["eggs $2.00usd", 2], ["eggs usd2", 2]]) {
+      assert.deepEqual(parseTldList(line).entries,
+        [{ tld: "eggs", label: null, aliasOf: null, priceUsd: expected }], line);
+    }
+  });
+
   await t.test("neither an ending nor a name survives to be refused by name", () => {
     // Three labels is neither. Dropping it here would leave it out of the
     // caller's report entirely, so it is handed on carrying its own bad text.
